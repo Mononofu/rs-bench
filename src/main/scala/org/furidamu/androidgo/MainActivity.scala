@@ -29,11 +29,14 @@ class MainActivity extends AppCompatActivity {
         val numElements = 100
         val floatElement = Element.I32(renderScript)
         val arrayType = Type.createX(renderScript, floatElement,  numElements)
-        val allocation = Allocation.createTyped(renderScript, arrayType)
-        allocation.copy1DRangeFrom(0, numElements, (1 to numElements).toArray)
+        val inputAlloc = Allocation.createTyped(renderScript, arrayType)
+        val outputAlloc = Allocation.createTyped(renderScript, arrayType)
 
-        val sum = script.reduce_addint(allocation).get()
+        script.forEach_mapper(inputAlloc, outputAlloc)
 
-        vh.text.setText(s"Hello world, sum = ${sum}")
+        val output = new Array[Int](numElements)
+        outputAlloc.copyTo(output)
+
+        vh.text.setText(s"Hello world, sum = ${output.sum}")
     }
 }
