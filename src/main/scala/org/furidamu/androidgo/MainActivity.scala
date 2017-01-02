@@ -8,6 +8,7 @@ import android.support.v8.renderscript.Element
 import android.support.v8.renderscript.Type
 import android.support.v8.renderscript.RenderScript
 import android.support.v7.app.AppCompatActivity
+import android.view.View
 
 class MainActivity extends AppCompatActivity {
     // allows accessing `.value` on TR.resource.constants
@@ -18,22 +19,67 @@ class MainActivity extends AppCompatActivity {
         // type ascription is required due to SCL-10491
         val vh: TypedViewHolder.main = TypedViewHolder.setContentView(this, TR.layout.main)
         vh.text.setText(s"Hello world, from ${TR.string.app_name.value}")
-        vh.image.getDrawable match {
-          case a: Animatable => a.start()
-          case _ => // not animatable
-        }
+      }
+
+      def runBenchmark(view: View) {
+        val vh: TypedViewHolder.main = TypedViewHolder.setContentView(this, TR.layout.main)
 
         val renderScript = RenderScript.create(this)
         val script = new ScriptC_network(renderScript)
 
-        val numElements = 100
-        val floatElement = Element.I32(renderScript)
-        val arrayType = Type.createX(renderScript, floatElement,  numElements)
-        val allocation = Allocation.createTyped(renderScript, arrayType)
-        allocation.copy1DRangeFrom(0, numElements, (1 to numElements).toArray)
+        // Matrix A is n * m and B is m * p, then C = A * B is n * p.
+        val n = 10
+        // For now, we just use square matrices.
+        val m = n
+        val p = n
 
-        val sum = script.reduce_addint(allocation).get()
+        val floatElement = Element.F32(renderScript)
 
-        vh.text.setText(s"Hello world, sum = ${sum}")
+        val aType = Type.createXY(renderScript, floatElement,  n, m)
+        val bType = Type.createXY(renderScript, floatElement,  m, p)
+        val cType = Type.createXY(renderScript, floatElement,  n, p)
+
+        val aAlloc = Allocation.createTyped(renderScript, aType)
+        val bAlloc = Allocation.createTyped(renderScript, bType)
+        val cAlloc = Allocation.createTyped(renderScript, cType)
+        val dummyAlloc = Allocation.createTyped(renderScript, cType, Allocation.USAGE_SCRIPT)
+
+        val numOpsAlloc = Allocation.createTyped(renderScript, cType, Allocation.USAGE_SCRIPT)
+
+        aAlloc.copyFrom((1 to n * m).map(_.toFloat).toArray)
+        bAlloc.copyFrom((1 to m * p).map(_.toFloat).toArray)
+
+        // script.set_matrixA(aAlloc);
+        // script.set_matrixB(bAlloc);
+        // script.set_m(m);
+        // script.set_numOps(numOpsAlloc);
+
+        val matrixC = new Array[Float](n * p)
+        val matrixNumOps = new Array[Float](n * p)
+
+        var text = ""
+        for (i <- 1 to 10) {
+          val start = System.nanoTime()
+
+          script.forEach_mmul(dummyAlloc, numOpsAlloc)
+          // cAlloc.copyTo(matrixC)
+          numOpsAlloc.copy2DRangeTo(0, 0, n, p, matrixNumOps)
+
+          val elapsedSeconds = (System.nanoTime() - start) / 1e9
+
+          val actualOps = matrixNumOps.sum
+          val numOps = m.toDouble * n.toDouble * p.toDouble
+
+          text += s"Performed ${actualOps} / ${numOps} ops in ${elapsedSeconds} s;"
+          text += s"${formatFlops(numOps, elapsedSeconds)}\n\n"
+          vh.text.setText(text)
+        }
+    }
+
+    def formatFlops(numOps: Double, elapsedSeconds: Double): String = {
+      val flops = numOps / elapsedSeconds
+      val prefixes = List("", "k", "M", "G", "T", "P", "E", "Z", "Y")
+      val order = Math.log10(flops).toInt / 3
+      s"${flops / Math.pow(10, order * 3)} ${prefixes(order)}FLOPS"
     }
 }
