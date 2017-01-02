@@ -18,3 +18,10 @@ libraryDependencies ++=
   "com.android.support.test" % "runner" % "0.5" % "androidTest" ::
   "com.android.support.test.espresso" % "espresso-core" % "2.2.2" % "androidTest" ::
   Nil
+
+rsTargetApi in Android := "24"
+rsSupportMode in Android := true
+
+proguardOptions in Android ++=
+  "-keep class android.support.v8.renderscript.** { *; }" ::
+  Nil
